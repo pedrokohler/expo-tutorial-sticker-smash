@@ -1,7 +1,12 @@
-import react, { useState } from "react";
+import react, { useState, useRef } from "react";
 import { StatusBar } from "expo-status-bar";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet, View, Platform } from "react-native";
 import * as ImagePicker from "expo-image-picker";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { captureRef } from "react-native-view-shot";
+import * as MediaLibrary from "expo-media-library";
+import domtoimage from "dom-to-image";
+
 
 import ImageViewer from "./components/ImageViewer";
 import Button from "./components/Button";
@@ -18,11 +23,18 @@ export default function App() {
   const [showAppOptions, setShowAppOptions] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [pickedEmoji, setPickedEmoji] = useState(null);
+  const [status, requestPermission] = MediaLibrary.usePermissions();
+  const imageRef = useRef();
+
+  if (status === null) {
+    requestPermission();
+  }
 
   const onReset = () => {
     setShowAppOptions(false);
     setSelectedImage(null);
-  }
+    setPickedEmoji(null);
+  };
 
   const onAddSticker = () => {
     setIsModalVisible(true);
@@ -46,23 +58,64 @@ export default function App() {
     }
   };
 
+  const onSaveImageAsync = async () => {
+    if (Platform.OS === "web") {
+      try {
+        const dataUrl = await domtoimage.toJpeg(imageRef.current, {
+          quality: 0.95,
+          width: 320,
+          height: 440,
+        });
+
+        const link = document.createElement("a");
+        link.download = "sticker-smash.jpeg";
+        link.href = dataUrl;
+        link.click();
+      } catch (e) {
+        console.log(e);
+      }
+    }
+
+    try {
+      const localUri = await captureRef(imageRef, {
+        height: 440,
+        quality: 1,
+      });
+
+      await MediaLibrary.saveToLibraryAsync(localUri);
+      if (localUri) {
+        alert("Saved!");
+      }
+    } catch (e) {
+      console.log(e);
+    }
+  };
+
   return (
-    <View style={styles.container}>
+    <GestureHandlerRootView style={styles.container}>
       <View style={styles.imageContainer}>
-        <ImageViewer
-          placeholderImageSource={PlaceholderImage}
-          selectedImage={selectedImage}
-        ></ImageViewer>
-        {pickedEmoji && <EmojiSticker imageSize={40} stickerSource={pickedEmoji} />}
+        <View ref={imageRef} collapsable={false}>
+          <ImageViewer
+            placeholderImageSource={PlaceholderImage}
+            selectedImage={selectedImage}
+          />
+          {pickedEmoji && (
+            <EmojiSticker imageSize={40} stickerSource={pickedEmoji} />
+          )}
+        </View>
       </View>
       {showAppOptions ? (
-          <View style={styles.optionsContainer}>
-            <View style={styles.optionsRow}>
-              <IconButton icon="refresh" label="Reset" onPress={onReset} />
-              <CircleButton onPress={onAddSticker} />
-              <IconButton icon="save-alt" label="Save" />
-            </View>
+        <View style={styles.optionsContainer}>
+          <View style={styles.optionsRow}>
+            <IconButton icon="refresh" label="Reset" onPress={onReset} />
+            <CircleButton onPress={onAddSticker} />
+            <IconButton
+              icon="save-alt"
+              label="Save"
+              onPress={onSaveImageAsync}
+            />
           </View>
+        </View>
       ) : (
         <View style={styles.footerContainer}>
           <Button
@@ -79,8 +132,8 @@ export default function App() {
       <EmojiPicker isVisible={isModalVisible} onClose={onModalClose}>
         <EmojiList onCloseModal={onModalClose} onSelect={setPickedEmoji} />
       </EmojiPicker>
-      <StatusBar style="auto" />
-    </View>
+      <StatusBar style="light" />
+    </GestureHandlerRootView>
   );
 }
 
@@ -100,11 +153,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   optionsContainer: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 80,
   },
   optionsRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
   },
 });
